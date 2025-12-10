@@ -117,6 +117,49 @@ git pull origin main
 source ~/.bashrc
 ```
 
+## عیب‌یابی اتصال به GitHub
+
+اگر با خطای `Connection timed out` مواجه شدید:
+
+### راه‌حل 1: Clone مستقیم
+
+```bash
+git clone https://github.com/mhmdalisadat/cheat.git /tmp/cheat-install
+cd /tmp/cheat-install
+chmod +x setup.sh
+./setup.sh
+rm -rf /tmp/cheat-install
+source ~/.bashrc
+```
+
+### راه‌حل 2: استفاده از wget
+
+```bash
+wget -qO- https://raw.githubusercontent.com/mhmdalisadat/cheat/main/install.sh | bash
+```
+
+### راه‌حل 3: نصب دستی
+
+```bash
+# ایجاد دایرکتوری‌ها
+mkdir -p ~/.local/bin ~/.cheats ~/.bash_completion.d
+
+# Clone repository
+git clone https://github.com/mhmdalisadat/cheat.git ~/cheat-repo
+
+# کپی فایل‌ها
+cp ~/cheat-repo/bin/* ~/.local/bin/
+cp ~/cheat-repo/bin/*.bash ~/.bash_completion.d/
+chmod +x ~/.local/bin/cheat*
+
+# تنظیم PATH
+echo 'export PATH="${HOME}/.local/bin:$PATH"' >> ~/.bashrc
+echo 'source ~/.bash_completion.d/cheat-completion.bash' >> ~/.bashrc
+source ~/.bashrc
+```
+
+برای راهنمای کامل عیب‌یابی: [INSTALL-TROUBLESHOOT.md](INSTALL-TROUBLESHOOT.md)
+
 ## عیب‌یابی
 
 ### مشکل: git not found

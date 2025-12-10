@@ -2,22 +2,29 @@
 
 ## نصب سریع روی VPS
 
-### روش 1: با curl (توصیه می‌شود)
+### روش 1: Clone مستقیم (توصیه می‌شود - اگر curl مشکل دارد)
+
+```bash
+git clone https://github.com/mhmdalisadat/cheat.git /tmp/cheat-install && cd /tmp/cheat-install && chmod +x setup.sh && ./setup.sh && rm -rf /tmp/cheat-install && source ~/.bashrc
+```
+
+### روش 2: با curl
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mhmdalisadat/cheat/main/install.sh | bash && source ~/.bashrc
 ```
 
-### روش 2: با wget
+### روش 3: با wget
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/mhmdalisadat/cheat/main/install.sh | bash && source ~/.bashrc
 ```
 
-### روش 3: Clone و نصب مستقیم
+## اگر اتصال به GitHub مشکل دارد
 
 ```bash
-git clone https://github.com/mhmdalisadat/cheat.git /tmp/cheat-install && cd /tmp/cheat-install && chmod +x setup.sh && ./setup.sh && rm -rf /tmp/cheat-install && source ~/.bashrc
+# استفاده از Clone مستقیم (معمولاً بهتر کار می‌کند)
+git clone https://github.com/mhmdalisadat/cheat.git ~/cheat && cd ~/cheat && chmod +x setup.sh && ./setup.sh && source ~/.bashrc
 ```
 
 ## استفاده بعد از نصب
