@@ -1,0 +1,544 @@
+#!/bin/bash
+
+# Linux Cheat Engine - Smart Suggestion Engine
+# PHASE A-E: Local Intelligence with Context Awareness & Pattern Recognition
+
+CHEATS_DIR="${HOME}/.cheats"
+HISTORY_DB="${CHEATS_DIR}/history.db"
+PATTERNS_DB="${CHEATS_DIR}/patterns.db"
+PAGER=""
+
+# Initialize history database
+init_history_db() {
+    if [ ! -f "$HISTORY_DB" ]; then
+        touch "$HISTORY_DB"
+        echo "# Format: timestamp|keyword|category|title|score" > "$HISTORY_DB"
+    fi
+}
+
+# Initialize patterns database
+init_patterns_db() {
+    if [ ! -f "$PATTERNS_DB" ]; then
+        touch "$PATTERNS_DB"
+        echo "# Format: pattern_type|pattern|frequency|last_used" > "$PATTERNS_DB"
+    fi
+}
+
+# PHASE E: Extract command patterns using regex (awk/sed/grep)
+extract_command_patterns() {
+    local line="$1"
+    local patterns=""
+    
+    # Command types: list, remove, restart, build, logs, inspect, run, start, stop, etc.
+    # Using grep with extended regex
+    local cmd_patterns=$(echo "$line" | grep -oE '\b(list|ls|remove|rm|delete|del|restart|reboot|build|make|logs|log|inspect|show|run|start|stop|kill|status|info|get|set|create|add|update|edit|push|pull|commit|fetch|clone|init|config|test|check|verify|search|find|grep|cat|tail|head|copy|cp|move|mv|chmod|chown|mount|umount|install|uninstall|enable|disable|reload|reload|reload)\b' | tr '\n' ' ')
+    
+    if [ -n "$cmd_patterns" ]; then
+        patterns="${patterns}cmd:${cmd_patterns} "
+    fi
+    
+    # Tool types: docker, swarm, traefik, systemctl, git, ssh, rsync, curl, etc.
+    local tool_patterns=$(echo "$line" | grep -oE '\b(docker|swarm|traefik|systemctl|systemd|git|ssh|rsync|curl|wget|kubectl|helm|terraform|ansible|puppet|chef|vagrant|vagrant|npm|yarn|pip|apt|yum|dnf|pacman|brew|snap|flatpak|podman|containerd|runc|iptables|ufw|firewalld|nginx|apache|httpd|mysql|postgresql|redis|mongodb|elasticsearch|kafka|rabbitmq|jenkins|gitlab|github|bitbucket|jira|confluence|slack|telegram|discord|vim|emacs|nano|tmux|screen|zsh|bash|fish|powershell|python|node|java|go|rust|cpp|c|php|ruby|perl|awk|sed|grep|find|xargs|tar|zip|unzip|gzip|bzip2|xz|7z|rar|unrar)\b' | tr '\n' ' ')
+    
+    if [ -n "$tool_patterns" ]; then
+        patterns="${patterns}tool:${tool_patterns} "
+    fi
+    
+    echo "$patterns"
+}
+
+# PHASE E: Extract and score patterns from line
+score_patterns() {
+    local line="$1"
+    local keyword="$2"
+    local score=0
+    
+    # Extract patterns
+    local patterns=$(extract_command_patterns "$line")
+    
+    if [ -z "$patterns" ]; then
+        echo "0"
+        return
+    fi
+    
+    # Check if patterns match keyword
+    local keyword_lower=$(echo "$keyword" | tr '[:upper:]' '[:lower:]')
+    
+    # Boost if keyword matches extracted command pattern
+    if echo "$patterns" | grep -qi "cmd:.*${keyword_lower}"; then
+        score=$((score + 8))
+    fi
+    
+    # Boost if keyword matches extracted tool pattern
+    if echo "$patterns" | grep -qi "tool:.*${keyword_lower}"; then
+        score=$((score + 10))
+    fi
+    
+    # Check patterns database for frequency
+    if [ -f "$PATTERNS_DB" ]; then
+        for pattern in $patterns; do
+            local pattern_type=$(echo "$pattern" | cut -d: -f1)
+            local pattern_value=$(echo "$pattern" | cut -d: -f2)
+            
+            # Count frequency in patterns database
+            local freq=$(grep -c "|${pattern_value}|" "$PATTERNS_DB" 2>/dev/null || echo "0")
+            if [ "$freq" -gt 0 ]; then
+                score=$((score + freq))
+            fi
+        done
+    fi
+    
+    echo "$score"
+}
+
+# PHASE E: Record patterns to database
+record_patterns() {
+    local line="$1"
+    local timestamp=$(date +%s)
+    
+    init_patterns_db
+    
+    local patterns=$(extract_command_patterns "$line")
+    
+    if [ -z "$patterns" ]; then
+        return
+    fi
+    
+    # Extract individual pattern values
+    echo "$patterns" | sed 's/[[:space:]]*$//' | tr ' ' '\n' | while IFS= read -r pattern; do
+        if [ -z "$pattern" ]; then
+            continue
+        fi
+        
+        local pattern_type=$(echo "$pattern" | cut -d: -f1)
+        local pattern_value=$(echo "$pattern" | cut -d: -f2- | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+        
+        if [ -z "$pattern_value" ]; then
+            continue
+        fi
+        
+        # Process each individual pattern value
+        for pval in $pattern_value; do
+            if [ -z "$pval" ]; then
+                continue
+            fi
+            
+            # Escape special characters for sed
+            local pval_escaped=$(echo "$pval" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            local pattern_type_escaped=$(echo "$pattern_type" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            
+            # Check if pattern exists
+            if grep -q "^${pattern_type_escaped}|${pval_escaped}|" "$PATTERNS_DB" 2>/dev/null; then
+                # Update frequency using awk (POSIX-compliant)
+                awk -v pt="$pattern_type" -v pv="$pval" -v ts="$timestamp" -F'|' '
+                    $1 == pt && $2 == pv {
+                        $3 = $3 + 1
+                        $4 = ts
+                        print $1 "|" $2 "|" $3 "|" $4
+                        next
+                    }
+                    { print }
+                ' "$PATTERNS_DB" > "${PATTERNS_DB}.tmp" 2>/dev/null
+                if [ -f "${PATTERNS_DB}.tmp" ]; then
+                    mv "${PATTERNS_DB}.tmp" "$PATTERNS_DB"
+                fi
+            else
+                # Add new pattern
+                echo "${pattern_type}|${pval}|1|${timestamp}" >> "$PATTERNS_DB"
+            fi
+        done
+    done
+}
+
+# Detect pager
+detect_pager() {
+    if command -v bat &> /dev/null; then
+        PAGER="bat --style=plain --paging=always"
+    elif command -v less &> /dev/null; then
+        PAGER="less -R"
+    else
+        PAGER="cat"
+    fi
+}
+
+# PHASE B: Context Detection
+detect_context() {
+    local context_score=0
+    local context_tags=""
+    
+    # Check for Docker
+    if command -v docker &> /dev/null; then
+        context_score=$((context_score + 10))
+        context_tags="${context_tags}docker "
+    fi
+    
+    # Check for Docker Compose files
+    if [ -f "docker-compose.yml" ] || [ -f "docker-compose.yaml" ]; then
+        context_score=$((context_score + 15))
+        context_tags="${context_tags}docker-compose "
+    fi
+    
+    # Check for Docker Stack files
+    if [ -f "stack.yml" ] || [ -f "stack.yaml" ] || [ -f "docker-stack.yml" ]; then
+        context_score=$((context_score + 15))
+        context_tags="${context_tags}swarm "
+    fi
+    
+    # Check for Traefik config
+    if [ -f "traefik.yml" ] || [ -f "traefik.yaml" ] || [ -f "traefik.toml" ]; then
+        context_score=$((context_score + 12))
+        context_tags="${context_tags}traefik "
+    fi
+    
+    # Check for Git
+    if [ -d ".git" ] || command -v git &> /dev/null; then
+        context_score=$((context_score + 8))
+        context_tags="${context_tags}git "
+    fi
+    
+    # Check for systemd
+    if systemctl --version &> /dev/null 2>&1 || [ -d "/etc/systemd" ]; then
+        context_score=$((context_score + 10))
+        context_tags="${context_tags}systemd "
+    fi
+    
+    # Check current directory for keywords
+    local pwd_lower=$(pwd | tr '[:upper:]' '[:lower:]')
+    if echo "$pwd_lower" | grep -q "docker"; then
+        context_score=$((context_score + 5))
+        context_tags="${context_tags}docker "
+    fi
+    if echo "$pwd_lower" | grep -q "swarm"; then
+        context_score=$((context_score + 5))
+        context_tags="${context_tags}swarm "
+    fi
+    
+    echo "$context_score|$context_tags"
+}
+
+# PHASE A: Scoring Engine (Pure Bash + AWK)
+calculate_score() {
+    local keyword="$1"
+    local file="$2"
+    local line="$3"
+    local category="$4"
+    
+    local score=0
+    local keyword_lower=$(echo "$keyword" | tr '[:upper:]' '[:lower:]')
+    local line_lower=$(echo "$line" | tr '[:upper:]' '[:lower:]')
+    local category_lower=$(echo "$category" | tr '[:upper:]' '[:lower:]')
+    
+    # Exact match = +5
+    if echo "$line_lower" | grep -q "^[^#]*\b${keyword_lower}\b"; then
+        score=$((score + 5))
+    fi
+    
+    # Partial match = +3
+    if echo "$line_lower" | grep -qi "$keyword_lower"; then
+        score=$((score + 3))
+    fi
+    
+    # Keyword in title (## or ###) = +4
+    if echo "$line" | grep -qE "^##+.*${keyword}"; then
+        score=$((score + 4))
+    fi
+    
+    # Category relevance = +2
+    if echo "$category_lower" | grep -qi "$keyword_lower"; then
+        score=$((score + 2))
+    fi
+    
+    # File name relevance = +2
+    local filename=$(basename "$file" .md)
+    local filename_lower=$(echo "$filename" | tr '[:upper:]' '[:lower:]')
+    if echo "$filename_lower" | grep -qi "$keyword_lower"; then
+        score=$((score + 2))
+    fi
+    
+    # PHASE D: Recent usage boost = +2
+    if [ -f "$HISTORY_DB" ]; then
+        local recent_count=$(grep -c "|${keyword_lower}|" "$HISTORY_DB" 2>/dev/null || echo "0")
+        if [ "$recent_count" -gt 0 ]; then
+            score=$((score + 2))
+        fi
+    fi
+    
+    # Frequency boost (count occurrences in file)
+    local frequency=$(grep -oi "$keyword" "$file" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$frequency" -gt 0 ]; then
+        score=$((score + frequency))
+    fi
+    
+    # PHASE E: Pattern recognition boost
+    local pattern_score=$(score_patterns "$line" "$keyword")
+    score=$((score + pattern_score))
+    
+    echo "$score"
+}
+
+# PHASE A: Smart Search with Ranking
+smart_search() {
+    local keyword="$1"
+    
+    if [ -z "$keyword" ]; then
+        echo "Usage: cheat-smart <keyword>"
+        echo "   Or: cheat-smart fzf (for interactive fuzzy search)"
+        return 1
+    fi
+    
+    if [ ! -d "$CHEATS_DIR" ]; then
+        echo "Cheats directory not found. Run 'cheat init' first."
+        return 1
+    fi
+    
+    init_history_db
+    
+    # PHASE B: Get context boost
+    local context_info=$(detect_context)
+    local context_score=$(echo "$context_info" | cut -d'|' -f1)
+    local context_tags=$(echo "$context_info" | cut -d'|' -f2)
+    
+    # Temporary file for scoring
+    local temp_file=$(mktemp)
+    
+    # Search and score all matches
+    local keyword_lower=$(echo "$keyword" | tr '[:upper:]' '[:lower:]')
+    
+    for file in "$CHEATS_DIR"/*.md; do
+        if [ ! -f "$file" ]; then
+            continue
+        fi
+        
+        local category=$(basename "$file" .md)
+        local category_lower=$(echo "$category" | tr '[:upper:]' '[:lower:]')
+        
+        # Check if category matches context
+        local context_boost=0
+        for tag in $context_tags; do
+            if echo "$category_lower" | grep -qi "$tag"; then
+                context_boost=$((context_boost + context_score / 2))
+            fi
+        done
+        
+        # Search file for keyword
+        local line_num=0
+        while IFS= read -r line; do
+            line_num=$((line_num + 1))
+            
+            if echo "$line" | grep -qi "$keyword"; then
+                local base_score=$(calculate_score "$keyword" "$file" "$line" "$category")
+                local total_score=$((base_score + context_boost))
+                
+                # Extract title if available
+                local title=""
+                if echo "$line" | grep -qE "^##+"; then
+                    title=$(echo "$line" | sed 's/^##*[[:space:]]*//')
+                else
+                    # Try to find nearest title above
+                    local prev_line=$(sed -n "1,${line_num}p" "$file" | grep -E "^##+" | tail -1 | sed 's/^##*[[:space:]]*//')
+                    if [ -n "$prev_line" ]; then
+                        title="$prev_line"
+                    else
+                        title="$category"
+                    fi
+                fi
+                
+                # Format: score|file|line_num|line|title|category
+                printf "%d|%s|%d|%s|%s|%s\n" \
+                    "$total_score" \
+                    "$file" \
+                    "$line_num" \
+                    "$(echo "$line" | sed 's/|/ /g' | head -c 100)" \
+                    "$title" \
+                    "$category" >> "$temp_file"
+            fi
+        done < "$file"
+    done
+    
+    # Sort by score (descending) and display top results
+    if [ -s "$temp_file" ]; then
+        echo "Smart suggestions for: $keyword"
+        if [ -n "$context_tags" ]; then
+            echo "Context detected: $context_tags"
+        fi
+        echo "=========================================="
+        echo ""
+        
+        # Sort by score and show top 10
+        sort -t'|' -k1 -rn "$temp_file" | head -10 | while IFS='|' read -r score file line_num line title category; do
+            printf "[%3d] %s: %s\n" "$score" "$category" "$title"
+            printf "      %s\n" "$line" | head -c 80
+            echo ""
+        done
+        
+        # PHASE D: Record this search
+        local top_result=$(sort -t'|' -k1 -rn "$temp_file" | head -1)
+        if [ -n "$top_result" ]; then
+            local top_category=$(echo "$top_result" | cut -d'|' -f6)
+            local top_title=$(echo "$top_result" | cut -d'|' -f5)
+            local top_line=$(echo "$top_result" | cut -d'|' -f4)
+            local timestamp=$(date +%s)
+            echo "${timestamp}|${keyword_lower}|${top_category}|${top_title}|$(echo "$top_result" | cut -d'|' -f1)" >> "$HISTORY_DB"
+            
+            # PHASE E: Record patterns
+            record_patterns "$top_line"
+        fi
+    else
+        echo "No matches found for: $keyword"
+    fi
+    
+    rm -f "$temp_file"
+}
+
+# PHASE C: Smart FZF Mode with Ranking
+smart_fzf() {
+    if ! command -v fzf &> /dev/null; then
+        echo "Error: fzf is not installed. Install it first:"
+        echo "  Ubuntu/Debian: sudo apt install fzf"
+        echo "  macOS: brew install fzf"
+        return 1
+    fi
+    
+    if [ ! -d "$CHEATS_DIR" ]; then
+        echo "Cheats directory not found."
+        return 1
+    fi
+    
+    init_history_db
+    
+    # PHASE B: Get context
+    local context_info=$(detect_context)
+    local context_score=$(echo "$context_info" | cut -d'|' -f1)
+    local context_tags=$(echo "$context_info" | cut -d'|' -f2)
+    
+    # Build ranked list with scores
+    local temp_file=$(mktemp)
+    
+    for file in "$CHEATS_DIR"/*.md; do
+        if [ ! -f "$file" ]; then
+            continue
+        fi
+        
+        local category=$(basename "$file" .md)
+        local category_lower=$(echo "$category" | tr '[:upper:]' '[:lower:]')
+        
+        # Context boost
+        local context_boost=0
+        for tag in $context_tags; do
+            if echo "$category_lower" | grep -qi "$tag"; then
+                context_boost=$((context_boost + context_score / 2))
+            fi
+        done
+        
+        # Extract all titles and code blocks
+        local current_title=""
+        local in_code_block=false
+        local code_block_lines=""
+        
+        while IFS= read -r line || [ -n "$line" ]; do
+            # Detect code block start/end
+            if echo "$line" | grep -qE '^```'; then
+                if [ "$in_code_block" = false ]; then
+                    in_code_block=true
+                    code_block_lines=""
+                else
+                    # End of code block - process accumulated lines
+                    in_code_block=false
+                    if [ -n "$code_block_lines" ]; then
+                        echo "$code_block_lines" | while IFS= read -r code_line; do
+                            # Score command lines (skip comments and empty lines)
+                            if [ -n "$code_line" ] && ! echo "$code_line" | grep -qE '^[[:space:]]*#'; then
+                                local cmd_score=$((5 + context_boost))
+                                if [ -f "$HISTORY_DB" ]; then
+                                    local cmd_lower=$(echo "$code_line" | tr '[:upper:]' '[:lower:]' | cut -d' ' -f1)
+                                    local cmd_history=$(grep -c "|${cmd_lower}|" "$HISTORY_DB" 2>/dev/null || echo "0")
+                                    cmd_score=$((cmd_score + cmd_history))
+                                fi
+                                
+                                printf "[%3d] %s: %s → %s\n" \
+                                    "$cmd_score" \
+                                    "$category" \
+                                    "$current_title" \
+                                    "$(echo "$code_line" | head -c 60)" >> "$temp_file"
+                            fi
+                        done
+                    fi
+                    code_block_lines=""
+                fi
+                continue
+            fi
+            
+            # If in code block, accumulate lines
+            if [ "$in_code_block" = true ]; then
+                code_block_lines="${code_block_lines}${line}\n"
+                continue
+            fi
+            
+            # Detect title
+            if echo "$line" | grep -qE "^##+[[:space:]]"; then
+                current_title=$(echo "$line" | sed 's/^##*[[:space:]]*//')
+                local base_score=$((10 + context_boost))
+                
+                # Check history for this title
+                if [ -f "$HISTORY_DB" ]; then
+                    local title_lower=$(echo "$current_title" | tr '[:upper:]' '[:lower:]')
+                    local history_count=$(grep -c "|.*|${category}|${title_lower}|" "$HISTORY_DB" 2>/dev/null || echo "0")
+                    base_score=$((base_score + history_count * 2))
+                fi
+                
+                printf "[%3d] %s: %s\n" "$base_score" "$category" "$current_title" >> "$temp_file"
+            fi
+        done < "$file"
+    done
+    
+    # Sort by score and present with fzf
+    local selected=$(sort -t']' -k1 -rn "$temp_file" | \
+        sed 's/^\[[[:space:]]*\([0-9]*\)\]/[\1]/' | \
+        fzf --ansi \
+            --preview="echo 'Score: {}' && grep -A 5 -B 5 '{}' ${CHEATS_DIR}/*.md" \
+            --preview-window=right:70% \
+            --height=80% \
+            --header="Smart Suggestions (ranked by relevance + context)")
+    
+    if [ -n "$selected" ]; then
+        # Extract category and title
+        local selected_category=$(echo "$selected" | sed 's/^\[[0-9]*\] //' | cut -d: -f1)
+        local selected_title=$(echo "$selected" | cut -d: -f2- | cut -d'→' -f1 | sed 's/[[:space:]]*$//')
+        
+        # Find and display the file
+        local filepath="${CHEATS_DIR}/${selected_category}.md"
+        
+        if [ -f "$filepath" ]; then
+            # PHASE D: Record selection
+            local timestamp=$(date +%s)
+            local keyword=$(echo "$selected_title" | tr '[:upper:]' '[:lower:]' | cut -d' ' -f1)
+            local score=$(echo "$selected" | grep -oE '\[[0-9]+\]' | grep -oE '[0-9]+')
+            echo "${timestamp}|${keyword}|${selected_category}|${selected_title}|${score}" >> "$HISTORY_DB"
+            
+            detect_pager
+            $PAGER "$filepath"
+        fi
+    fi
+    
+    rm -f "$temp_file"
+}
+
+# Main handler
+main() {
+    case "$1" in
+        fzf)
+            smart_fzf
+            ;;
+        "")
+            echo "Usage: cheat-smart <keyword>"
+            echo "   Or: cheat-smart fzf (for interactive fuzzy search)"
+            ;;
+        *)
+            smart_search "$1"
+            ;;
+    esac
+}
+
+# Run main function
+main "$@"
+

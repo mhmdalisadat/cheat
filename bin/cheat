@@ -1,0 +1,334 @@
+#!/bin/bash
+
+# Linux Cheat Engine - Main CLI Tool
+# PHASE 1-7 Complete Implementation
+
+CHEATS_DIR="${HOME}/.cheats"
+PAGER=""
+
+# Detect pager (bat or less)
+detect_pager() {
+    if command -v bat &> /dev/null; then
+        PAGER="bat --style=plain --paging=always"
+    elif command -v less &> /dev/null; then
+        PAGER="less -R"
+    else
+        PAGER="cat"
+    fi
+}
+
+# Initialize cheats directory
+init_cheats_dir() {
+    if [ ! -d "$CHEATS_DIR" ]; then
+        mkdir -p "$CHEATS_DIR"
+        echo "Created cheats directory: $CHEATS_DIR"
+    fi
+}
+
+# List all categories
+list_categories() {
+    if [ ! -d "$CHEATS_DIR" ]; then
+        echo "Cheats directory not found. Run 'cheat init' first."
+        return 1
+    fi
+    
+    echo "Available cheat categories:"
+    echo "============================"
+    for file in "$CHEATS_DIR"/*.md; do
+        if [ -f "$file" ]; then
+            basename "$file" .md
+        fi
+    done | sort
+}
+
+# Show category contents
+show_category() {
+    local category="$1"
+    local file="${CHEATS_DIR}/${category}.md"
+    
+    if [ ! -f "$file" ]; then
+        echo "Category '$category' not found."
+        echo "Available categories:"
+        list_categories
+        return 1
+    fi
+    
+    detect_pager
+    $PAGER "$file"
+}
+
+# Search across all cheat files (PHASE 2)
+search_cheats() {
+    local keyword="$1"
+    
+    if [ -z "$keyword" ]; then
+        echo "Usage: cheat search <keyword>"
+        return 1
+    fi
+    
+    if [ ! -d "$CHEATS_DIR" ]; then
+        echo "Cheats directory not found."
+        return 1
+    fi
+    
+    echo "Searching for: $keyword"
+    echo "========================"
+    
+    grep -r -i --color=always "$keyword" "$CHEATS_DIR"/*.md 2>/dev/null | \
+        sed "s|${CHEATS_DIR}/||g" | \
+        sed "s|\.md:|: |g" || echo "No matches found."
+}
+
+# Fuzzy search with fzf (PHASE 4)
+fuzzy_search() {
+    if ! command -v fzf &> /dev/null; then
+        echo "Error: fzf is not installed. Install it first:"
+        echo "  Ubuntu/Debian: sudo apt install fzf"
+        echo "  macOS: brew install fzf"
+        return 1
+    fi
+    
+    if [ ! -d "$CHEATS_DIR" ]; then
+        echo "Cheats directory not found."
+        return 1
+    fi
+    
+    local selected=$(grep -r "^##\|^###\|^# " "$CHEATS_DIR"/*.md 2>/dev/null | \
+        sed "s|${CHEATS_DIR}/||g" | \
+        sed "s|\.md:|: |g" | \
+        fzf --ansi --preview="grep -A 10 '{}' ${CHEATS_DIR}/*.md" \
+            --preview-window=right:70% --height=80%)
+    
+    if [ -n "$selected" ]; then
+        local file=$(echo "$selected" | cut -d: -f1)
+        local filepath="${CHEATS_DIR}/${file}"
+        
+        if [ -f "$filepath" ]; then
+            detect_pager
+            $PAGER "$filepath"
+        fi
+    fi
+}
+
+# Execute command mode (PHASE 5)
+execute_mode() {
+    if ! command -v fzf &> /dev/null; then
+        echo "Error: fzf is not installed."
+        return 1
+    fi
+    
+    if [ ! -d "$CHEATS_DIR" ]; then
+        echo "Cheats directory not found."
+        return 1
+    fi
+    
+    # Extract code blocks and commands
+    local selected=$(grep -r "^\`\`\`\|^\`" "$CHEATS_DIR"/*.md 2>/dev/null | \
+        grep -v "^#" | \
+        sed "s|${CHEATS_DIR}/||g" | \
+        sed "s|\.md:|: |g" | \
+        fzf --ansi --preview="grep -A 5 -B 5 '{}' ${CHEATS_DIR}/*.md" \
+            --preview-window=right:70% --height=80%)
+    
+    if [ -n "$selected" ]; then
+        # Extract command from selection
+        local command=$(echo "$selected" | grep -oP '`[^`]+`' | head -1 | tr -d '`')
+        
+        if [ -n "$command" ]; then
+            echo "Selected command: $command"
+            echo -n "Execute this command? (y/N): "
+            read -r confirm
+            
+            if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+                echo "Executing: $command"
+                eval "$command"
+            else
+                echo "Cancelled."
+            fi
+        fi
+    fi
+}
+
+# Git sync commands (PHASE 6)
+git_init() {
+    if [ ! -d "$CHEATS_DIR" ]; then
+        init_cheats_dir
+    fi
+    
+    cd "$CHEATS_DIR" || return 1
+    
+    if [ ! -d ".git" ]; then
+        git init
+        git add .
+        git commit -m "Initial cheat sheets commit"
+        echo "Git repository initialized in $CHEATS_DIR"
+    else
+        echo "Git repository already exists."
+    fi
+}
+
+git_remote() {
+    local remote_url="$1"
+    
+    if [ -z "$remote_url" ]; then
+        echo "Usage: cheat git-remote <repository-url>"
+        echo "Example: cheat git-remote https://github.com/username/cheats.git"
+        return 1
+    fi
+    
+    cd "$CHEATS_DIR" || return 1
+    
+    if [ ! -d ".git" ]; then
+        git_init
+    fi
+    
+    git remote remove origin 2>/dev/null
+    git remote add origin "$remote_url"
+    echo "Remote repository set to: $remote_url"
+}
+
+git_push() {
+    cd "$CHEATS_DIR" || return 1
+    
+    if [ ! -d ".git" ]; then
+        echo "Git not initialized. Run 'cheat git-init' first."
+        return 1
+    fi
+    
+    git add .
+    git commit -m "Update cheat sheets" 2>/dev/null || echo "No changes to commit."
+    git push origin main 2>/dev/null || git push origin master 2>/dev/null || {
+        echo "Push failed. Check your remote configuration."
+        return 1
+    }
+    echo "Changes pushed successfully."
+}
+
+git_pull() {
+    cd "$CHEATS_DIR" || return 1
+    
+    if [ ! -d ".git" ]; then
+        echo "Git not initialized. Run 'cheat git-init' first."
+        return 1
+    fi
+    
+    git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || {
+        echo "Pull failed. Check your remote configuration."
+        return 1
+    }
+    echo "Changes pulled successfully."
+}
+
+# Export to PDF (PHASE 7)
+export_pdf() {
+    if ! command -v pandoc &> /dev/null; then
+        echo "Error: pandoc is not installed. Install it first:"
+        echo "  Ubuntu/Debian: sudo apt install pandoc texlive-latex-base"
+        echo "  macOS: brew install pandoc basictex"
+        return 1
+    fi
+    
+    if [ ! -d "$CHEATS_DIR" ]; then
+        echo "Cheats directory not found."
+        return 1
+    fi
+    
+    local output_file="${CHEATS_DIR}/cheats.pdf"
+    
+    pandoc "${CHEATS_DIR}"/*.md -o "$output_file" 2>/dev/null
+    
+    if [ -f "$output_file" ]; then
+        echo "PDF exported to: $output_file"
+    else
+        echo "PDF export failed. Check pandoc installation."
+        return 1
+    fi
+}
+
+# Dashboard server (PHASE 7)
+dashboard() {
+    if ! command -v markserv &> /dev/null && ! command -v python3 &> /dev/null; then
+        echo "Error: markserv or python3 not found."
+        echo "Install markserv: npm install -g markserv"
+        echo "Or use Python HTTP server as fallback."
+        return 1
+    fi
+    
+    if [ ! -d "$CHEATS_DIR" ]; then
+        echo "Cheats directory not found."
+        return 1
+    fi
+    
+    cd "$CHEATS_DIR" || return 1
+    
+    if command -v markserv &> /dev/null; then
+        echo "Starting markserv dashboard..."
+        echo "Access at: http://localhost:8642"
+        markserv --port 8642
+    elif command -v python3 &> /dev/null; then
+        echo "Starting Python HTTP server..."
+        echo "Access at: http://localhost:8000"
+        python3 -m http.server 8000
+    fi
+}
+
+# Main command handler
+main() {
+    case "$1" in
+        init)
+            init_cheats_dir
+            ;;
+        list|"")
+            list_categories
+            ;;
+        search)
+            search_cheats "$2"
+            ;;
+        fzf)
+            fuzzy_search
+            ;;
+        exec|execute)
+            execute_mode
+            ;;
+        git-init)
+            git_init
+            ;;
+        git-remote)
+            git_remote "$2"
+            ;;
+        git-push)
+            git_push
+            ;;
+        git-pull)
+            git_pull
+            ;;
+        export|export-pdf)
+            export_pdf
+            ;;
+        dashboard|serve)
+            dashboard
+            ;;
+        smart)
+            # PHASE F: Integration with cheat-smart
+            shift
+            if command -v cheat-smart &> /dev/null; then
+                cheat-smart "$@"
+            else
+                echo "Error: cheat-smart not found. Install it first."
+                echo "Run: ./setup.sh"
+                return 1
+            fi
+            ;;
+        *)
+            if [ -n "$1" ]; then
+                show_category "$1"
+            else
+                list_categories
+            fi
+            ;;
+    esac
+}
+
+# Run main function
+main "$@"
+

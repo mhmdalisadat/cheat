@@ -1,0 +1,146 @@
+#!/bin/bash
+
+# Linux Cheat Engine - Add Cheat Entry
+# PHASE 2 Implementation
+
+CHEATS_DIR="${HOME}/.cheats"
+
+# Initialize cheats directory
+init_cheats_dir() {
+    if [ ! -d "$CHEATS_DIR" ]; then
+        mkdir -p "$CHEATS_DIR"
+        echo "Created cheats directory: $CHEATS_DIR"
+    fi
+}
+
+# Add new cheat entry
+add_cheat() {
+    init_cheats_dir
+    
+    # Prompt for category
+    echo "Available categories:"
+    ls -1 "$CHEATS_DIR"/*.md 2>/dev/null | sed "s|${CHEATS_DIR}/||g" | sed "s|\.md||g" | sort
+    echo ""
+    echo -n "Enter category (or new category name): "
+    read -r category
+    
+    if [ -z "$category" ]; then
+        echo "Error: Category cannot be empty."
+        return 1
+    fi
+    
+    # Prompt for title
+    echo -n "Enter title: "
+    read -r title
+    
+    if [ -z "$title" ]; then
+        echo "Error: Title cannot be empty."
+        return 1
+    fi
+    
+    # Prompt for command/description
+    echo "Enter command or description (press Enter, then Ctrl+D when done):"
+    local command=""
+    while IFS= read -r line; do
+        command="${command}${line}\n"
+    done
+    
+    # Remove trailing newline
+    command=$(echo -e "$command" | sed '$d')
+    
+    if [ -z "$command" ]; then
+        echo "Error: Command/description cannot be empty."
+        return 1
+    fi
+    
+    # Determine file path
+    local file="${CHEATS_DIR}/${category}.md"
+    
+    # Create file if it doesn't exist
+    if [ ! -f "$file" ]; then
+        echo "# ${category^}" > "$file"
+        echo "" >> "$file"
+        echo "Cheat sheets for ${category}." >> "$file"
+        echo "" >> "$file"
+    fi
+    
+    # Append formatted entry
+    {
+        echo "## $title"
+        echo ""
+        echo '```bash'
+        echo -e "$command"
+        echo '```'
+        echo ""
+        echo "---"
+        echo ""
+    } >> "$file"
+    
+    echo "Cheat entry added to ${file}"
+}
+
+# Interactive mode
+interactive_mode() {
+    while true; do
+        add_cheat
+        echo ""
+        echo -n "Add another entry? (y/N): "
+        read -r continue
+        if [ "$continue" != "y" ] && [ "$continue" != "Y" ]; then
+            break
+        fi
+    done
+}
+
+# Non-interactive mode (for scripting)
+non_interactive() {
+    local category="$1"
+    local title="$2"
+    local command="$3"
+    
+    if [ -z "$category" ] || [ -z "$title" ] || [ -z "$command" ]; then
+        echo "Usage: cheat-add <category> <title> <command>"
+        echo "   Or: cheat-add (for interactive mode)"
+        return 1
+    fi
+    
+    init_cheats_dir
+    
+    local file="${CHEATS_DIR}/${category}.md"
+    
+    if [ ! -f "$file" ]; then
+        echo "# ${category^}" > "$file"
+        echo "" >> "$file"
+        echo "Cheat sheets for ${category}." >> "$file"
+        echo "" >> "$file"
+    fi
+    
+    {
+        echo "## $title"
+        echo ""
+        echo '```bash'
+        echo "$command"
+        echo '```'
+        echo ""
+        echo "---"
+        echo ""
+    } >> "$file"
+    
+    echo "Cheat entry added to ${file}"
+}
+
+# Main handler
+main() {
+    if [ $# -eq 0 ]; then
+        interactive_mode
+    elif [ $# -eq 3 ]; then
+        non_interactive "$1" "$2" "$3"
+    else
+        echo "Usage: cheat-add [category] [title] [command]"
+        echo "   Or: cheat-add (for interactive mode)"
+        return 1
+    fi
+}
+
+main "$@"
+
