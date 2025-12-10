@@ -1,10 +1,28 @@
 # Linux Cheat Engine - Quick Start
 
-## Installation (One Command)
+## Installation
+
+### Local Installation
 
 ```bash
 chmod +x setup.sh && ./setup.sh
 source ~/.bashrc
+```
+
+### Remote Installation (VPS/Server)
+
+```bash
+# نصب مستقیم از GitHub
+curl -fsSL https://raw.githubusercontent.com/mhmdalisadat/cheat/main/install.sh | bash
+source ~/.bashrc
+```
+
+یا دستور یک خطی:
+
+```bash
+git clone https://github.com/mhmdalisadat/cheat.git /tmp/cheat-install && \
+cd /tmp/cheat-install && chmod +x setup.sh && ./setup.sh && \
+rm -rf /tmp/cheat-install && source ~/.bashrc
 ```
 
 ## Basic Usage
@@ -21,6 +39,18 @@ cheat search "docker run"
 
 # Add new entry
 cheat-add
+```
+
+## افزودن دستورات جدید
+
+```bash
+# روش ساده (تعاملی)
+cheat-add
+
+# روش سریع (غیرتعاملی)
+cheat-add docker "Restart Container" "docker restart <id>"
+
+# برای راهنمای کامل: HOW-TO-ADD.md
 ```
 
 ## Smart Suggestions (NEW!)

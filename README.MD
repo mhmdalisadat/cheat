@@ -16,6 +16,8 @@ A terminal-based personal tool for storing, searching, reading, running, and syn
 
 ## Quick Start
 
+### نصب محلی (Local Installation)
+
 ```bash
 # Run setup
 ./setup.sh
@@ -36,9 +38,23 @@ cheat search "docker run"
 cheat-add
 ```
 
+### نصب از راه دور (Remote Installation)
+
+```bash
+# نصب مستقیم از GitHub (روی VPS)
+curl -fsSL https://raw.githubusercontent.com/mhmdalisadat/cheat/main/install.sh | bash
+
+# یا دستور یک خطی
+git clone https://github.com/mhmdalisadat/cheat.git /tmp/cheat-install && \
+cd /tmp/cheat-install && chmod +x setup.sh && ./setup.sh && rm -rf /tmp/cheat-install && source ~/.bashrc
+```
+
+برای جزئیات بیشتر: [INSTALL-REMOTE.md](INSTALL-REMOTE.md)
+
 ## Installation
 
-See [INSTALL.md](INSTALL.md) for detailed installation instructions.
+- **Local**: See [INSTALL.md](INSTALL.md) for local installation
+- **Remote/VPS**: See [INSTALL-REMOTE.md](INSTALL-REMOTE.md) for remote installation from GitHub
 
 ## Usage
 
@@ -91,9 +107,12 @@ See [SMART-PHASES.md](SMART-PHASES.md) and [PHASE-EFG.md](PHASE-EFG.md) for deta
 
 ## Documentation
 
-- [INSTALL.md](INSTALL.md) - Installation guide
+- [INSTALL.md](INSTALL.md) - Local installation guide
+- [INSTALL-REMOTE.md](INSTALL-REMOTE.md) - Remote/VPS installation guide
+- [INSTALL-ONE-LINER.md](INSTALL-ONE-LINER.md) - One-line installation commands
 - [INSTALL-SMART.md](INSTALL-SMART.md) - Smart engine installation
 - [USAGE.md](USAGE.md) - Usage examples
+- [HOW-TO-ADD.md](HOW-TO-ADD.md) - راهنمای افزودن دستورات جدید
 - [PHASES.md](PHASES.md) - Core phase documentation
 - [SMART-ENGINE.md](SMART-ENGINE.md) - Smart suggestion engine guide
 - [SMART-PHASES.md](SMART-PHASES.md) - Smart engine phase details (A-D)

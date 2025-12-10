@@ -1,5 +1,7 @@
 # Linux Cheat Engine - Usage Guide
 
+> برای راهنمای کامل افزودن دستورات جدید، به [HOW-TO-ADD.md](HOW-TO-ADD.md) مراجعه کنید.
+
 ## Basic Commands
 
 ### List Categories
